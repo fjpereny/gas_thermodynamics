@@ -61,27 +61,22 @@ fn main() {
         internal_energy: UnitInternalEnergy::J_mol,
     };
     
-    let gas_state: Detail = Detail::new();
-    let gas_comp = get_gas_comp(GasComp::Air);
-    let mut program_state = ProgramState {
+    let mut program_state = Box::new(ProgramState {
         gas: gas,
-        gas_state: gas_state,
-        gas_comp: gas_comp,
+        gas_state: Detail::default(),
+        gas_comp: get_gas_comp(GasComp::Air),
         unit_text: unit_text,
         units: units,
         inlet_state: Detail::default(),
         discharge_state: Detail::default(),
         show_inlet_state: false,
         show_discharge_state: false,
-    };
+    });
 
     program_state.gas_state.set_composition(&program_state.gas_comp).unwrap();
     program_state.gas_state.p = initial_pressure;
     program_state.gas_state.t = initial_temperature;
-    calculate_state(&mut program_state);
-
-
-
+    calculate_state(&mut program_state.gas_state);
     println!();
     println!("{}", "Thermodynamic Properties Calculator".blue().bold());
     println!("{}", "Frank Pereny - 2025".blue().italic());
@@ -93,13 +88,13 @@ fn quit() {
     std::process::exit(0);
 }
 
-fn calculate_state(program_state: &mut ProgramState) {
-    let density = program_state.gas_state.density();
+fn calculate_state(gas_state: &mut Detail) {
+    let density = gas_state.density();
     match density {
         Ok(()) => (),
-        Err(_err) => println!("{}", "** Error calculating density.  Pressure or temperature out of bounds! **".red().bold().italic()),
+        Err(_err) => println!("{}", "** Error calculating density.  Pressure or temperature out of bounds?? **".red().bold().italic()),
     }
-    program_state.gas_state.properties();
+    gas_state.properties();
 }
 
 
@@ -114,6 +109,7 @@ fn print_main_menu(program_state: &mut ProgramState) {
     println!("{}", "1 - Set as inlet condition".cyan());
     println!("{}", "2 - Set as discharge condition".cyan());
     println!("{}", "u - Change Units");
+    println!("{}", "c - Clear inlet and discharge condistions".red().bold());
     println!("---------");
     println!("q - Quit Program");
     println!();
@@ -132,6 +128,7 @@ fn print_main_menu(program_state: &mut ProgramState) {
         "u" => change_units(program_state),
         "1" => set_inlet(program_state),
         "2" => set_discharge(program_state),
+        "c" => clear_inlet_discharge(program_state),
         "q" => quit(),
         _ => {
             println!("{}", "**Invalid selection!**".bold().red());
@@ -142,17 +139,30 @@ fn print_main_menu(program_state: &mut ProgramState) {
 
 fn set_inlet(program_state: &mut ProgramState) {
     program_state.show_inlet_state = true;
+    program_state.inlet_state.set_composition(&program_state.gas_comp);
     program_state.inlet_state.p = program_state.gas_state.p;
+    println!("{}", program_state.inlet_state.p);
     program_state.inlet_state.t = program_state.gas_state.t;
-    program_state.inlet_state.set_composition(&program_state.gas_comp).unwrap();
+    println!("{}", program_state.inlet_state.t);
+    calculate_state(&mut program_state.inlet_state);
     print_gas_state(program_state);
 }
 
 fn set_discharge(program_state: &mut ProgramState) {
     program_state.show_discharge_state = true;
+    program_state.discharge_state = Detail::default();
+    program_state.discharge_state.set_composition(&program_state.gas_comp);
     program_state.discharge_state.p = program_state.gas_state.p;
     program_state.discharge_state.t = program_state.gas_state.t;
-    program_state.discharge_state.set_composition(&program_state.gas_comp).unwrap();
+    calculate_state(&mut program_state.discharge_state);
+    print_gas_state(program_state);
+}
+
+fn clear_inlet_discharge(program_state: &mut ProgramState) {
+    program_state.inlet_state = Detail::default();
+    program_state.show_inlet_state = false;
+    program_state.discharge_state = Detail::default();
+    program_state.show_discharge_state = false;
     print_gas_state(program_state);
 }
 
@@ -189,10 +199,10 @@ fn set_gas_comp(program_state: &mut ProgramState) {
         _ => set_gas_comp(program_state),
     }
     program_state.gas_state.set_composition(&new_gas_comp).unwrap();
-    
+    program_state.gas_comp = new_gas_comp;
     program_state.show_inlet_state = false;
     program_state.show_discharge_state = false;
-    calculate_state(program_state);
+    calculate_state(&mut program_state.gas_state);
     print_gas_state(program_state);
 
 }
@@ -217,7 +227,7 @@ fn set_pressure(program_state: &mut ProgramState) {
         UnitPressure::Bar => program_state.gas_state.p = p / 0.01,
         UnitPressure::PSI => program_state.gas_state.p = p / 0.145038,
     }
-    calculate_state(program_state);
+    calculate_state(&mut program_state.gas_state);
     print_gas_state(program_state);
 }
 
@@ -244,7 +254,7 @@ fn set_temperature(program_state: &mut ProgramState) {
         UnitTemp::R => program_state.gas_state.t = t * 5.0 / 9.0,
     }
 
-    calculate_state(program_state);
+    calculate_state(&mut program_state.gas_state);
     print_gas_state(program_state);
 }
 
@@ -312,7 +322,6 @@ fn print_gas_state(program_state: &mut ProgramState) {
         println!("{:<30} {:10.4} {:10}", "Entropy: ", program_state.gas_state.s, format!("J/(mol-{})", program_state.unit_text.temperature));
         println!("{:<30} {:10.4} {:10}", "Cp: ", program_state.gas_state.cp, format!("J/(mol-{})", program_state.unit_text.temperature));
         println!("{:<30} {:10.4} {:10}", "Cv: ", program_state.gas_state.cv, format!("J/(mol-{})", program_state.unit_text.temperature));
-        println!("{:<30} {:10.4} {:10}", "Cp/Cv: ", program_state.gas_state.cp / program_state.gas_state.cv, "[]");
         println!("{:<30} {:10.4} {:10}", "Compressibility Z: ", program_state.gas_state.z, "[]");
         println!("{:<30} {:10.4} {:10}", "Isentropic Exponent k: ", program_state.gas_state.kappa, "[]");
         println!("{:<30} {:10.4} {:10}", "Speed of Sound w: ", program_state.gas_state.w, "m/s");
@@ -323,11 +332,26 @@ fn print_gas_state(program_state: &mut ProgramState) {
 
     if program_state.show_inlet_state && program_state.show_discharge_state {
         let pr = program_state.discharge_state.p / program_state.inlet_state.p;
-        let tr = program_state.discharge_state.t / program_state.inlet_state.t;
-        let td = program_state.discharge_state.t - program_state.inlet_state.t;
+        let inlet_temp_K = program_state.inlet_state.t;
+        let discharge_temp_K = program_state.discharge_state.t;
+        let tr = discharge_temp_K / inlet_temp_K;
+        let td_K = discharge_temp_K - inlet_temp_K;
+        let inlet_temp = get_temperature(inlet_temp_K, program_state.units.temp);
+        let discharge_temp = get_temperature(discharge_temp_K, program_state.units.temp);
+        let td = discharge_temp - inlet_temp;
+        let ud = program_state.discharge_state.u - program_state.inlet_state.u;
+        let hd = program_state.discharge_state.h - program_state.inlet_state.h;
+        let sd = program_state.discharge_state.h - program_state.inlet_state.s;
+        let cpcv_ave = (program_state.inlet_state.kappa + program_state.discharge_state.kappa) / 2.0;
+        let isentropic_eff = (pr.powf((cpcv_ave - 1.0) / cpcv_ave) - 1.0) * inlet_temp_K / td_K;
         println!("{:<30} {:10.4} {:10}", "Pressure Ratio: ", pr, "[]");
         println!("{:<30} {:10.4} {:10}", "Temperature Ratio: ", tr, "[]");
-        println!("{:<30} {:10.4} {:10}", "Temperature Rise: ", td, program_state.unit_text.temperature);        
+        println!("{:<30} {:10.4} {:10}", "Temperature Change: ", td, program_state.unit_text.temperature);
+        println!("{:<30} {:10.4} {:10}", "Internal Energy Change: ", ud, program_state.unit_text.internal_energy);
+        println!("{:<30} {:10.4} {:10}", "Enthalpy Change: ", hd, "TBD");
+        println!("{:<30} {:10.4} {:10}", "Entropy Change: ", sd, "TBD");
+        println!("{:<30} {:10.4} {:10}", "Average Cp/Cv: ", cpcv_ave, "[]");
+        println!("{:<30} {:10.4} {:10}", "Isentropic Efficiency: ", isentropic_eff, "[]");
     }
 
     print_main_menu(program_state);
